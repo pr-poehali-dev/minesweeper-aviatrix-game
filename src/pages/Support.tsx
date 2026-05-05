@@ -1,84 +1,50 @@
-import { useState, useRef, useEffect } from "react";
-import Navbar from "@/components/Navbar";
-import Icon from "@/components/ui/icon";
+import { useState, useRef, useEffect } from 'react';
+import Navbar from '@/components/Navbar';
+import Icon from '@/components/ui/icon';
+import { api } from '@/lib/api';
 
 interface Message {
   id: number;
-  from: "user" | "agent";
   text: string;
-  time: string;
+  from_admin: boolean;
+  created_at: string;
 }
 
-const initMessages: Message[] = [
-  {
-    id: 1,
-    from: "agent",
-    text: "Привет! Я агент поддержки NEXUS. Чем могу помочь? 🎮",
-    time: "10:00",
-  },
-  {
-    id: 2,
-    from: "agent",
-    text: "Вы можете спросить меня о пополнении, выводе средств, бонусах или технических вопросах.",
-    time: "10:00",
-  },
-];
-
-const autoReplies: Record<string, string> = {
-  "вывод": "Вывод средств обрабатывается от 5 минут до 3 дней в зависимости от метода. СБП — самый быстрый способ.",
-  "депозит": "Пополнение счёта происходит мгновенно. Минимальная сумма от ₽100 через СБП.",
-  "бонус": "Бонус 100% действует на первый депозит. Минимальная сумма — ₽1 000. Подробности в разделе Пополнение.",
-  "реферал": "Приглашайте друзей и получайте 10% от их пополнений. Ссылка в разделе Рефералы.",
-  "верификация": "Верификация не требуется для сумм до ₽100 000 в сутки.",
-};
-
 const quickQuestions = [
-  "Как вывести деньги?",
-  "Сколько идёт вывод?",
-  "Где мой бонус?",
-  "Как работает реферал?",
+  'Как пополнить баланс?',
+  'Сколько ждать вывод?',
+  'Как играть в Минёр?',
+  'Как использовать бонус?',
 ];
 
 export default function Support() {
-  const [messages, setMessages] = useState<Message[]>(initMessages);
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
-
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
-    const now = new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
-    const userMsg: Message = { id: Date.now(), from: "user", text, time: now };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-
-    setIsTyping(true);
-    setTimeout(() => {
-      const lower = text.toLowerCase();
-      const matchKey = Object.keys(autoReplies).find((k) => lower.includes(k));
-      const reply = matchKey
-        ? autoReplies[matchKey]
-        : "Ваш вопрос передан оператору. Обычно мы отвечаем в течение 5-10 минут. Вы также можете написать нам в Telegram.";
-      const agentMsg: Message = {
-        id: Date.now() + 1,
-        from: "agent",
-        text: reply,
-        time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
-      };
-      setIsTyping(false);
-      setMessages((prev) => [...prev, agentMsg]);
-    }, 1500);
+  const loadMessages = async () => {
+    const data = await api.supportMessages();
+    setMessages(data.messages || []);
   };
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+  useEffect(() => {
+    loadMessages();
+    const interval = setInterval(loadMessages, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
+    setInput('');
+    setLoading(true);
+    await api.supportSend(text);
+    await loadMessages();
+    setLoading(false);
   };
 
   return (
@@ -87,11 +53,11 @@ export default function Support() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="font-display text-3xl font-black text-white mb-2">💬 Поддержка</h1>
-          <p className="text-white/40">Онлайн 24/7 · Среднее время ответа: 3 мин</p>
+          <p className="text-white/40">Напишите нам — ответим как можно скорее</p>
         </div>
 
-        <div className="glass rounded-3xl border border-white/10 overflow-hidden" style={{ height: "calc(100vh - 280px)", minHeight: "500px" }}>
-          {/* Chat Header */}
+        <div className="glass rounded-3xl border border-white/10 overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 260px)', minHeight: 500 }}>
+          {/* Header */}
           <div className="px-5 py-4 border-b border-white/10 flex items-center gap-3">
             <div className="relative">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
@@ -109,52 +75,37 @@ export default function Support() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ height: "calc(100% - 140px)" }}>
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {messages.length === 0 && (
+              <div className="text-center text-white/30 text-sm py-8">
+                Напишите нам — мы рады помочь!
+              </div>
+            )}
             {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.from === "user" ? "flex-row-reverse" : "flex-row"}`}
-              >
-                {msg.from === "agent" && (
+              <div key={msg.id} className={`flex gap-3 ${msg.from_admin ? 'flex-row' : 'flex-row-reverse'}`}>
+                {msg.from_admin && (
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center shrink-0 mt-0.5">
                     <Icon name="Headphones" size={12} className="text-white" />
                   </div>
                 )}
-                <div className={`max-w-xs lg:max-w-sm ${msg.from === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                  <div
-                    className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                      msg.from === "user"
-                        ? "btn-gradient text-white rounded-tr-sm"
-                        : "glass border border-white/10 text-white/80 rounded-tl-sm"
-                    }`}
-                  >
+                <div className={`max-w-xs lg:max-w-sm flex flex-col gap-1 ${msg.from_admin ? 'items-start' : 'items-end'}`}>
+                  <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                    msg.from_admin
+                      ? 'glass border border-white/10 text-white/80 rounded-tl-sm'
+                      : 'btn-gradient text-white rounded-tr-sm'
+                  }`}>
                     {msg.text}
                   </div>
-                  <span className="text-xs text-white/20">{msg.time}</span>
+                  <span className="text-xs text-white/20">
+                    {new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               </div>
             ))}
-
-            {isTyping && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center shrink-0">
-                  <Icon name="Headphones" size={12} className="text-white" />
-                </div>
-                <div className="glass border border-white/10 px-4 py-3 rounded-2xl rounded-tl-sm flex gap-1 items-center">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="w-2 h-2 rounded-full bg-white/40 animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
             <div ref={bottomRef} />
           </div>
 
-          {/* Quick Questions */}
+          {/* Quick questions */}
           <div className="px-5 py-2 border-t border-white/5 flex gap-2 overflow-x-auto">
             {quickQuestions.map((q) => (
               <button
@@ -173,16 +124,16 @@ export default function Support() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKey}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
               placeholder="Написать сообщение..."
               className="flex-1 glass border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 text-sm focus:outline-none focus:border-purple-500/50 bg-transparent"
             />
             <button
               onClick={() => sendMessage(input)}
-              disabled={!input.trim()}
+              disabled={!input.trim() || loading}
               className="btn-gradient w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-30 shrink-0"
             >
-              <Icon name="Send" size={16} className="text-white" />
+              {loading ? <Icon name="Loader" size={14} className="animate-spin text-white" /> : <Icon name="Send" size={14} className="text-white" />}
             </button>
           </div>
         </div>
